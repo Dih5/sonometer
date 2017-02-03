@@ -85,29 +85,29 @@ canvas.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
 
 # Select device
 
-def _change_device(*args):
-    global audio_stream
-    with controlled_execution():
-        audio_stream.stop_stream()
-        time.sleep(1)
-        audio_stream.close()
-        index = recording_device_list[cmbDevice.current()]['index']
-        _clear_data()
-        print("setting device " + str(index))
-        audio_stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True,
-                              frames_per_buffer=int(RATE * interval),
-                              stream_callback=input_callback, input_device_index=index)
-        audio_stream.start_stream()
-
-
-varDevice = StringVar()
-varDevice.set(p.get_default_input_device_info()['name'])
-cmbDevice = Combobox(master=root, textvariable=varDevice, width=70)
-device_cmb_list = [x['name'] for x in recording_device_list]
-cmbDevice["values"] = device_cmb_list
-cmbDevice.pack(side=BOTTOM)
-
-cmbDevice.bind("<<ComboboxSelected>>", _change_device)
+# def _change_device(*args):
+#     global audio_stream
+#     with controlled_execution():
+#         audio_stream.stop_stream()
+#         time.sleep(1)
+#         audio_stream.close()
+#         index = recording_device_list[cmbDevice.current()]['index']
+#         _clear_data()
+#         print("setting device " + str(index))
+#         audio_stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True,
+#                               frames_per_buffer=int(RATE * interval),
+#                               stream_callback=input_callback, input_device_index=index)
+#         audio_stream.start_stream()
+#
+#
+# varDevice = StringVar()
+# varDevice.set(p.get_default_input_device_info()['name'])
+# cmbDevice = Combobox(master=root, textvariable=varDevice, width=70)
+# device_cmb_list = [x['name'] for x in recording_device_list]
+# cmbDevice["values"] = device_cmb_list
+# cmbDevice.pack(side=BOTTOM)
+#
+# cmbDevice.bind("<<ComboboxSelected>>", _change_device)
 
 
 def _clear_data():
