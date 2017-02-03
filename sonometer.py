@@ -3,7 +3,7 @@
 
 """Listen to sound intensity using a microphone"""
 
-import time
+import datetime
 import threading
 
 import pyaudio  # pacman -S portaudio jack2 && pip install pyaudio
@@ -13,6 +13,7 @@ import matplotlib
 matplotlib.use('TkAgg')
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
 
 from tkinter import *
 from tkinter.ttk import *
@@ -227,6 +228,16 @@ varStreak = StringVar()
 varStreak.set("No data yet")
 lblStreak = Label(master=frmOperations, textvariable=varStreak)
 lblStreak.pack(side=RIGHT)
+
+
+def _capture():
+    global canvas
+    with controlled_execution():
+        t = datetime.datetime.now().strftime("%S%M%H%d%m%y")
+        figure.savefig("sound" + t + ".pdf")
+
+buttonCapture = Button(master=frmOperations, text='Capture', command=_capture)
+buttonCapture.pack(side=LEFT)
 
 
 # To be called when audio is read
