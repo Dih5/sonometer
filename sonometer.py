@@ -265,6 +265,8 @@ def input_callback(in_data, frame_count, time_info, status_flags):
             streaks[-1].plot(active_subplot)
             varStreak.set("Last streak = %.2f ± %.2f" % (streaks[-1].mean(), streaks[-1].err()))
 
+        active_subplot.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
+
         try:
             canvas.draw()
         except TclError:
