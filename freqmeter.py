@@ -134,7 +134,7 @@ def input_callback(in_data, frame_count, time_info, status_flags):
     with controlled_execution():
         active_subplot.clear()
         freq_matrix.append(data_to_freq(in_data))
-        points_in_x = sldScale.get()
+        points_in_x = int(sldScale.get())
         try:
             contour_plot = active_subplot.contourf(np.fft.rfftfreq(int(interval * RATE), d=1. / RATE)[:points_in_x],
                                                np.arange(0, len(freq_matrix), 1)*interval,
