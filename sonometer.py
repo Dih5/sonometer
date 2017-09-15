@@ -50,7 +50,6 @@ class controlled_execution:
 
 
 class Streak:
-    # TODO: No need to save all data, just update mean and err
     def __init__(self):
         self.start_x = None
         self.end_x = None
@@ -189,23 +188,23 @@ def _clear_streaks():
         streaks = []
 
 
-def _start_rec():
+def _start_streak():
     global streaks, recording
     with controlled_execution():
         streaks.append(Streak())
         recording = True
-        buttonStopRec["state"] = "normal"
-        buttonRec["state"] = "disabled"
+        buttonStopStreak["state"] = "normal"
+        buttonStartStreak["state"] = "disabled"
         buttonClearPoints["state"] = "disabled"
         buttonClearStreaks["state"] = "disabled"
 
 
-def _stop_rec():
+def _stop_streak():
     global recording, streaks
     with controlled_execution():
         recording = False
-        buttonRec["state"] = "normal"
-        buttonStopRec["state"] = "disabled"
+        buttonStartStreak["state"] = "normal"
+        buttonStopStreak["state"] = "disabled"
         buttonClearPoints["state"] = "enabled"
         buttonClearStreaks["state"] = "enabled"
         if varStreakToCsv.get():
@@ -224,11 +223,11 @@ buttonClearPoints.pack(side=LEFT)
 buttonClearStreaks = Button(master=frmOperations, text='Clear streaks', command=_clear_streaks)
 buttonClearStreaks.pack(side=LEFT)
 
-buttonRec = Button(master=frmOperations, text='Start streak', command=_start_rec)
-buttonRec.pack(side=LEFT)
+buttonStartStreak = Button(master=frmOperations, text='Start streak', command=_start_streak)
+buttonStartStreak.pack(side=LEFT)
 
-buttonStopRec = Button(master=frmOperations, text='Stop streak', command=_stop_rec, state=DISABLED)
-buttonStopRec.pack(side=LEFT)
+buttonStopStreak = Button(master=frmOperations, text='Stop streak', command=_stop_streak, state=DISABLED)
+buttonStopStreak.pack(side=LEFT)
 
 varStreak = StringVar()
 varStreak.set("No data yet")
@@ -251,14 +250,14 @@ chkStreakToCsv = Checkbutton(master=frmConfig, text="Save streaks", variable=var
 chkStreakToCsv.pack(side=LEFT)
 
 
-def _capture():
+def _plot_capture():
     global canvas
     with controlled_execution():
         t = datetime.datetime.now().strftime("%S%M%H%d%m%y")
         figure.savefig("sound" + t + ".pdf")
 
 
-buttonCapture = Button(master=frmOperations, text='Capture', command=_capture)
+buttonCapture = Button(master=frmOperations, text='Plot capture', command=_plot_capture)
 buttonCapture.pack(side=LEFT)
 
 
@@ -282,7 +281,7 @@ def input_callback(in_data, frame_count, time_info, status_flags):
                     streaks[-1].add(intensity_data[current_pos])
 
                 if 0 < varStreakLen.get() < len(streaks[-1]):
-                    _stop_rec()
+                    _stop_streak()
 
         if streaks:
             for s in streaks[:-1]:
