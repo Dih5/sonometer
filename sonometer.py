@@ -5,6 +5,7 @@
 
 import datetime
 import threading
+import csv
 
 import pyaudio  # pacman -S portaudio jack2 && pip install pyaudio
 import numpy as np
@@ -200,13 +201,18 @@ def _start_rec():
 
 
 def _stop_rec():
-    global recording
+    global recording, streaks
     with controlled_execution():
         recording = False
         buttonRec["state"] = "normal"
         buttonStopRec["state"] = "disabled"
         buttonClearPoints["state"] = "enabled"
         buttonClearStreaks["state"] = "enabled"
+        if varStreakToCsv.get():
+            t = datetime.datetime.now().strftime("%S%M%H%d%m%y")
+            with open('data%s.csv' % t, 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile, delimiter=',')
+                writer.writerow(streaks[-1].data)
 
 
 frmOperations = Frame(master=root)
@@ -229,12 +235,28 @@ varStreak.set("No data yet")
 lblStreak = Label(master=frmOperations, textvariable=varStreak)
 lblStreak.pack(side=RIGHT)
 
+frmConfig = Frame(master=root)
+frmConfig.pack(side=BOTTOM)
+
+varStreakLen = IntVar()
+varStreakLen.set(0)
+lblStreakLen = Label(master=frmConfig, text="Streak time")
+txtStreakLen = Entry(master=frmConfig, textvariable=varStreakLen)
+lblStreakLen.pack(side=LEFT)
+txtStreakLen.pack(side=LEFT)
+
+varStreakToCsv = BooleanVar()
+varStreakToCsv.set(True)
+chkStreakToCsv = Checkbutton(master=frmConfig, text="Save streaks", variable=varStreakToCsv)
+chkStreakToCsv.pack(side=LEFT)
+
 
 def _capture():
     global canvas
     with controlled_execution():
         t = datetime.datetime.now().strftime("%S%M%H%d%m%y")
         figure.savefig("sound" + t + ".pdf")
+
 
 buttonCapture = Button(master=frmOperations, text='Capture', command=_capture)
 buttonCapture.pack(side=LEFT)
@@ -258,6 +280,9 @@ def input_callback(in_data, frame_count, time_info, status_flags):
                     streaks[-1].add_first(current_pos, intensity_data[current_pos])
                 else:
                     streaks[-1].add(intensity_data[current_pos])
+
+                if 0 < varStreakLen.get() < len(streaks[-1]):
+                    _stop_rec()
 
         if streaks:
             for s in streaks[:-1]:
