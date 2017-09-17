@@ -239,7 +239,7 @@ frmConfig.pack(side=BOTTOM)
 
 varStreakLen = IntVar()
 varStreakLen.set(0)
-lblStreakLen = Label(master=frmConfig, text="Streak time")
+lblStreakLen = Label(master=frmConfig, text="Streak points")
 txtStreakLen = Entry(master=frmConfig, textvariable=varStreakLen)
 lblStreakLen.pack(side=LEFT)
 txtStreakLen.pack(side=LEFT)
