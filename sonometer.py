@@ -209,10 +209,17 @@ def _stop_streak():
         buttonClearStreaks["state"] = "enabled"
         if varStreakToCsv.get():
             t = datetime.datetime.now().strftime("%S%M%H%d%m%y")
-            with open('data%s.csv' % t, 'w', newline='') as csvfile:
+            file_name = 'data%s.csv' % t
+            with open(file_name, 'w', newline='') as csvfile:
                 writer = csv.writer(csvfile, delimiter=',')
                 writer.writerow(streaks[-1].data)
+            varStatus.set("Data saved as %s" % file_name)
 
+
+varStatus = StringVar()
+varStatus.set("Sonometer started")
+lblStatus = Label(master=root, textvariable=varStatus)
+lblStatus.pack(side=BOTTOM)
 
 frmOperations = Frame(master=root)
 frmOperations.pack(side=BOTTOM)
@@ -228,11 +235,6 @@ buttonStartStreak.pack(side=LEFT)
 
 buttonStopStreak = Button(master=frmOperations, text='Stop streak', command=_stop_streak, state=DISABLED)
 buttonStopStreak.pack(side=LEFT)
-
-varStreak = StringVar()
-varStreak.set("No data yet")
-lblStreak = Label(master=frmOperations, textvariable=varStreak)
-lblStreak.pack(side=RIGHT)
 
 frmConfig = Frame(master=root)
 frmConfig.pack(side=BOTTOM)
@@ -254,7 +256,9 @@ def _plot_capture():
     global canvas
     with controlled_execution():
         t = datetime.datetime.now().strftime("%S%M%H%d%m%y")
-        figure.savefig("sound" + t + ".pdf")
+        file_name = "sound" + t + ".pdf"
+        figure.savefig(file_name)
+        varStatus.set("Plot saved as " + file_name)
 
 
 buttonCapture = Button(master=frmOperations, text='Plot capture', command=_plot_capture)
@@ -287,7 +291,6 @@ def input_callback(in_data, frame_count, time_info, status_flags):
             for s in streaks[:-1]:
                 s.plot(active_subplot, 'yellow')
             streaks[-1].plot(active_subplot)
-            varStreak.set("Last streak = %.2f ± %.2f" % (streaks[-1].mean(), streaks[-1].err()))
 
         active_subplot.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
 
