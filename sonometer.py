@@ -296,8 +296,8 @@ def input_callback(in_data, frame_count, time_info, status_flags):
 
         try:
             canvas.draw()
-        except TclError:
-            print("Canvas is no longer available. Stopping input stream.")
+        except (TclError, RuntimeError):
+            print("Stopping input stream.")
             # Might happen if callbacked before stream destruction
             return None, pyaudio.paAbort
         return None, pyaudio.paContinue
