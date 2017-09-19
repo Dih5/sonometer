@@ -3,12 +3,9 @@
 
 """Listen to sound intensity using a microphone"""
 
-# Partial rewrite of Object Orientated code, with better style
-# TODO: Buttons are yet to be added to the GUI
-
-# While this code is of better quality, if we are going to keep the two programs in one independent file each
-# little is gained
-
+import datetime
+import csv
+from threading import Lock
 
 import pyaudio  # pacman -S portaudio && pip install pyaudio
 import numpy as np
@@ -26,7 +23,7 @@ __version__ = "0.1.0"
 
 
 class Listener:
-    def __init__(self, interval=1, chunk=1024, data_type=pyaudio.paInt16, channels=1, rate=44100):
+    def __init__(self, interval, chunk=1024, data_type=pyaudio.paInt16, channels=1, rate=44100):
         self.interval = interval
         self.chunk = chunk
         self.data_type = data_type
@@ -34,7 +31,7 @@ class Listener:
         self.rate = rate
 
         self.p = pyaudio.PyAudio()
-        self.selected_api = 0  # TODO: Fix selection
+        self.selected_api = 0  # TODO: This is a fixed selection
         self.selected_device = None
         self.audio_stream = None
         self.to_stop = False  # Whether to stop after next callback
@@ -75,7 +72,7 @@ class Listener:
         return True
 
     def stop(self):
-        if self.audio_stream is not None:
+        if self.audio_stream is None:
             return False
         self.to_stop = True
         self.audio_stream.stop_stream()
@@ -89,7 +86,7 @@ class Listener:
 
 
 class TkListener(Frame):
-    def __init__(self, plot_f=None, master=None, title="TkListener"):
+    def __init__(self, interval=0.3, plot_f=None, master=None, title="TkListener"):
         super().__init__(master=master)
         self.master.title(title)
         self.pack()
@@ -98,12 +95,17 @@ class TkListener(Frame):
         self.plot_f = plot_f
 
         # Create a tk.DrawingArea
-        self.canvas = FigureCanvasTkAgg(self.figure, master=master)
+        self.canvas = FigureCanvasTkAgg(self.figure, master=self)
         self.canvas.show()
         self.canvas.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
 
-        self.listener = Listener()
+        self.listener = Listener(interval)
         self.listener.start(self.plot_callback)
+
+    def restart_listener(self, interval):
+        self.listener.stop()
+        self.listener.interval = interval
+        #self.listener.start(self.plot_callback)
 
     def plot_callback(self, in_data):
         """The callback function used to update the plot"""
@@ -118,28 +120,30 @@ class TkListener(Frame):
 
 
 # Specific intensity logic
-# From this point code should be moved to a new file
-
-current_pos = 0
-points_max = 80  # points kept in the plot
-
-recording = False  # Whether capturing data to take its mean
-
-streaks = []  # Saved streaks of data
-
-intensity_data = [0] * points_max
+# From this point code could be moved to a new file to avoid repetition in freqmeter.py
 
 
 def data_to_intensity(data):
     return np.linalg.norm(np.fromstring(data, np.int16), 2)
 
 
+lock = Lock()
+
+
+class controlled_execution:
+    def __enter__(self):
+        return lock.__enter__()
+
+    def __exit__(self, type, value, traceback):
+        return lock.__exit__(type, value, traceback)
+
+
 class Streak:
-    # TODO: No need to save all data, just update mean and err
-    def __init__(self):
+    def __init__(self, points_max):
         self.start_x = None
         self.end_x = None
         self.data = []
+        self.points_max = points_max
         pass
 
     def __len__(self):
@@ -151,8 +155,8 @@ class Streak:
         self.data = [start_y]
 
     def add(self, y):
-        if len(self.data) < points_max:
-            self.end_x = (self.end_x + 1) % points_max
+        if len(self.data) < self.points_max:
+            self.end_x = (self.end_x + 1) % self.points_max
         self.data.append(y)
 
     def mean(self):
@@ -166,6 +170,7 @@ class Streak:
             return
         mean = self.mean()
         err = self.err()
+        points_max = self.points_max
         if len(self) >= points_max:  # Covers all plot
             place.plot([0, points_max - 1], [mean, mean], '-', color=color)
             place.fill_between([0, points_max - 1], [mean - err, mean - err], [mean, mean], facecolor=color,
@@ -197,32 +202,135 @@ class Streak:
                 place.text(0, mean + err, u"%.2f ± %.2f" % (mean, err))
 
 
-def intensity_plot(in_data, plot):
-    global current_pos, points_max, recording, streaks, intensity_data, current_pos
-    current_pos += 1
-    current_pos %= points_max
-    intensity_data[current_pos] = data_to_intensity(in_data)
-    plot.clear()
-    plot.plot(intensity_data, 'o')
-    plot.plot([current_pos], [intensity_data[current_pos]], 'ro')
-    if recording:
-        if not streaks:
-            print("Error: tried to record with no streak object")
-        else:
-            if len(streaks[-1]) == 0:
-                streaks[-1].add_first(current_pos, intensity_data[current_pos])
-            else:
-                streaks[-1].add(intensity_data[current_pos])
+class IntensityListener(TkListener):
+    def __init__(self, master=None, points_max=80, interval=0.3):
+        super().__init__(plot_f=self.intensity_plot, interval=interval, master=master, title="Sonometer")
+        self.current_pos = 0
+        self.points_max = points_max  # points kept in the plot
 
-    if streaks:
-        for s in streaks[:-1]:
-            s.plot(plot, 'yellow')
-        streaks[-1].plot(plot)
+        self.recording = False  # Whether a streak is being recorded
+
+        self.streaks = []  # Saved streaks of data
+
+        self.intensity_data = [0] * self.points_max
+
+        # Add specific controls
+
+        self.varStatus = StringVar()
+        self.varStatus.set("Sonometer started")
+        self.lblStatus = Label(master=self, textvariable=self.varStatus)
+        self.lblStatus.pack(side=BOTTOM)
+
+        self.frmOperations = Frame(master=self)
+        self.frmOperations.pack(side=BOTTOM)
+
+        self.buttonClearPoints = Button(master=self.frmOperations, text='Clear points', command=self.clear_points)
+        self.buttonClearPoints.pack(side=LEFT)
+
+        self.buttonClearStreaks = Button(master=self.frmOperations, text='Clear streaks', command=self.clear_streaks)
+        self.buttonClearStreaks.pack(side=LEFT)
+
+        self.buttonStartStreak = Button(master=self.frmOperations, text='Start streak', command=self.start_streak)
+        self.buttonStartStreak.pack(side=LEFT)
+
+        self.buttonStopStreak = Button(master=self.frmOperations, text='Stop streak', command=self.stop_streak,
+                                       state=DISABLED)
+        self.buttonStopStreak.pack(side=LEFT)
+
+        self.buttonCapture = Button(master=self.frmOperations, text='Plot capture', command=self.plot_capture)
+        self.buttonCapture.pack(side=LEFT)
+
+        self.buttonTest = Button(master=self.frmOperations, text='Test', command=self.test)
+        self.buttonTest.pack(side=LEFT)
+
+        self.frmConfig = Frame(master=self)
+        self.frmConfig.pack(side=BOTTOM)
+
+        self.varStreakLen = IntVar()
+        self.varStreakLen.set(0)
+        self.lblStreakLen = Label(master=self.frmConfig, text="Streak points")
+        self.txtStreakLen = Entry(master=self.frmConfig, textvariable=self.varStreakLen)
+        self.lblStreakLen.pack(side=LEFT)
+        self.txtStreakLen.pack(side=LEFT)
+
+        self.varStreakToCsv = BooleanVar()
+        self.varStreakToCsv.set(True)
+        self.chkStreakToCsv = Checkbutton(master=self.frmConfig, text="Save streaks", variable=self.varStreakToCsv)
+        self.chkStreakToCsv.pack(side=LEFT)
+
+    def test(self):
+        print("asf")
+        self.restart_listener(2.0)
+
+    def clear_points(self):
+        with controlled_execution():
+            self.current_pos = 0
+            self.intensity_data = [0] * self.points_max
+
+    def clear_streaks(self):
+        with controlled_execution():
+            self.streaks = []
+
+    def start_streak(self):
+        with controlled_execution():
+            self.streaks.append(Streak(self.points_max))
+            self.recording = True
+            self.buttonStopStreak["state"] = "normal"
+            self.buttonStartStreak["state"] = "disabled"
+            self.buttonClearPoints["state"] = "disabled"
+            self.buttonClearStreaks["state"] = "disabled"
+
+    def stop_streak(self):
+        with controlled_execution():
+            self.recording = False
+            self.buttonStartStreak["state"] = "normal"
+            self.buttonStopStreak["state"] = "disabled"
+            self.buttonClearPoints["state"] = "enabled"
+            self.buttonClearStreaks["state"] = "enabled"
+            if self.varStreakToCsv.get():
+                t = datetime.datetime.now().strftime("%S%M%H%d%m%y")
+                file_name = 'data%s.csv' % t
+                with open(file_name, 'w', newline='') as csvfile:
+                    writer = csv.writer(csvfile, delimiter=',')
+                    writer.writerow(self.streaks[-1].data)
+                self.varStatus.set("Data saved as %s" % file_name)
+
+    def plot_capture(self):
+        with controlled_execution():
+            t = datetime.datetime.now().strftime("%S%M%H%d%m%y")
+            file_name = "sound" + t + ".pdf"
+            self.figure.savefig(file_name)
+            self.varStatus.set("Plot saved as " + file_name)
+
+    def intensity_plot(self, in_data, plot):
+        self.current_pos += 1
+        self.current_pos %= self.points_max
+        self.intensity_data[self.current_pos] = data_to_intensity(in_data)
+        plot.clear()
+        plot.plot(self.intensity_data, 'o')
+        plot.plot([self.current_pos], [self.intensity_data[self.current_pos]], 'ro')
+        if self.recording:
+            if not self.streaks:
+                print("Error: tried to record with no streak object")
+            else:
+                if len(self.streaks[-1]) == 0:
+                    self.streaks[-1].add_first(self.current_pos, self.intensity_data[self.current_pos])
+                else:
+                    self.streaks[-1].add(self.intensity_data[self.current_pos])
+                if 0 < self.varStreakLen.get() < len(self.streaks[-1]):
+                    self.stop_streak()
+
+        if self.streaks:
+            for s in self.streaks[:-1]:
+                s.plot(plot, 'yellow')
+            self.streaks[-1].plot(plot)
+
+        plot.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
 
 
 def main():
     root = Tk()
-    app = TkListener(master=root, plot_f=intensity_plot)
+    app = IntensityListener(root, interval=0.3, points_max=80)
     app.mainloop()
 
 
