@@ -36,6 +36,8 @@ class Listener:
         self.audio_stream = None
         self.to_stop = False  # Whether to stop after next callback
 
+        self.lock = Lock()
+
     def list_api(self):
         """Return the list of available apis"""
         return [self.p.get_host_api_info_by_index(x) for x in range(0, self.p.get_host_api_count())]
@@ -54,8 +56,13 @@ class Listener:
 
     def start(self, callback):
         def wrapped_callback(in_data, frame_count, time_info, status_flags):
-            callback(in_data)
-            return None, pyaudio.paContinue
+            with self.lock:
+                callback(in_data)
+                if self.to_stop:
+                    self.to_stop = False
+                    return None, pyaudio.paComplete
+                else:
+                    return None, pyaudio.paContinue
 
         if self.audio_stream is not None:
             return False
@@ -74,11 +81,15 @@ class Listener:
     def stop(self):
         if self.audio_stream is None:
             return False
-        self.to_stop = True
-        self.audio_stream.stop_stream()
-        self.audio_stream.close()
-        self.audio_stream = None
-        return True
+        # If sampling time is too small, this might remain locked.
+        # A timeout is used just in case
+        if self.lock.acquire(blocking=True, timeout=max(self.interval * 2, 1.0)):
+            self.to_stop = True
+            self.audio_stream.close()
+            self.audio_stream = None
+            return True
+        else:
+            return False
 
     def terminate(self):
         self.stop()
@@ -86,13 +97,16 @@ class Listener:
 
 
 class TkListener(Frame):
-    def __init__(self, interval=0.3, plot_f=None, master=None, title="TkListener"):
+    def __init__(self, plot_f, data_f=lambda x: x, interval=0.3, master=None, title="TkListener"):
         super().__init__(master=master)
         self.master.title(title)
         self.pack()
         self.figure = Figure(figsize=(5, 4), dpi=100)
         self.active_subplot = self.figure.add_subplot(111)
         self.plot_f = plot_f
+        self.data_f = data_f
+        self.data = []
+        self.lock = Lock()
 
         # Create a tk.DrawingArea
         self.canvas = FigureCanvasTkAgg(self.figure, master=self)
@@ -100,23 +114,32 @@ class TkListener(Frame):
         self.canvas.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
 
         self.listener = Listener(interval)
-        self.listener.start(self.plot_callback)
+        self.listener.start(self.callback)
+
+        self.after(100, self.update_plot)
 
     def restart_listener(self, interval):
-        self.listener.stop()
-        self.listener.interval = interval
-        #self.listener.start(self.plot_callback)
+        if not self.listener.stop():
+            return False
 
-    def plot_callback(self, in_data):
+        self.listener = Listener(interval)
+        self.listener.start(self.callback)
+        return True
+
+    def callback(self, in_data):
+        with self.lock:
+            self.data.append(self.data_f(in_data))
+
+    def update_plot(self):
         """The callback function used to update the plot"""
-        self.plot_f(in_data, self.active_subplot)
-        try:
+        with self.lock:
+            data = self.data
+            self.data = []
+        if data:
+            for new_data in data:
+                self.plot_f(new_data, self.active_subplot)
             self.canvas.draw()
-        except TclError:
-            print("Canvas is no longer available. Stopping input stream.")
-            # Might happen if callbacked before stream destruction
-            return None, pyaudio.paAbort
-        return None, pyaudio.paContinue
+        self.after(100, self.update_plot)
 
 
 # Specific intensity logic
@@ -240,11 +263,17 @@ class IntensityListener(TkListener):
         self.buttonCapture = Button(master=self.frmOperations, text='Plot capture', command=self.plot_capture)
         self.buttonCapture.pack(side=LEFT)
 
-        self.buttonTest = Button(master=self.frmOperations, text='Test', command=self.test)
-        self.buttonTest.pack(side=LEFT)
-
         self.frmConfig = Frame(master=self)
         self.frmConfig.pack(side=BOTTOM)
+
+        self.frmInterval = LabelFrame(master=self.frmConfig, text="Sampling per point (s)")
+        self.frmInterval.pack(side=LEFT)
+        self.varInterval = DoubleVar()
+        self.varInterval.set(self.listener.interval)
+        self.txtInterval = Entry(master=self.frmInterval, textvariable=self.varInterval)
+        self.buttonInterval = Button(master=self.frmInterval, text='Update', command=self.change_interval)
+        self.txtInterval.pack(side=TOP)
+        self.buttonInterval.pack(side=TOP)
 
         self.varStreakLen = IntVar()
         self.varStreakLen.set(0)
@@ -258,9 +287,22 @@ class IntensityListener(TkListener):
         self.chkStreakToCsv = Checkbutton(master=self.frmConfig, text="Save streaks", variable=self.varStreakToCsv)
         self.chkStreakToCsv.pack(side=LEFT)
 
-    def test(self):
-        print("asf")
-        self.restart_listener(2.0)
+    def change_interval(self):
+        new_interval = self.varInterval.get()
+        if new_interval == self.listener.interval:
+            self.varStatus.set("Selected interval has not changed")
+            return False
+        if new_interval < 0.1:
+            self.varStatus.set("Too small sampling ignored (min. 0.1).")
+            return False
+        max_retries = 3
+        while max_retries > 0:
+            max_retries -= 1
+            if self.restart_listener(new_interval):
+                self.varStatus.set("Sampling interval set to %f" % new_interval)
+                return True
+        self.varStatus.set("Unable to change the interval.")
+        return False
 
     def clear_points(self):
         with controlled_execution():
