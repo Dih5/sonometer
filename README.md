@@ -22,7 +22,7 @@ When the application is started, sound will be sampled every 0.3 s and the measu
 
 To record and save a certain amount of data, set the number of points you want to sample in the "streak points" field and keep the "save streak" option checked. Press "start streak" and wait for the streak to finish. The data will be saved as "dataXXX.csv", the number being of the form sec&min&hour&day&month&year. The position of the points in the plot is irrelevant to this.
 
-To change the time per sample, edit the file and change the value of the "interval" variable. (A GUI option will be added in the future.)
+To change the time per sample, use the text box in the application and press the update button. Values smaller than 0.1s might make the UI unresponsive and are not allowed. However, the file can be edited to force it. If needed, check the parameters in the *last lines* of the code.
 
 ## Troubleshooting
 - Make sure the appropriate interpreter is being used. `Python --version` might help.
