@@ -142,6 +142,72 @@ class TkListener(Frame):
         self.after(100, self.update_plot)
 
 
+# Tooltip for tk (taken from https://github.com/Dih5/xpecgen)
+class CreateToolTip(object):
+    """
+    A tooltip for a given widget.
+    """
+
+    # Based on the content from this post:
+    # http://stackoverflow.com/questions/3221956/what-is-the-simplest-way-to-make-tooltips-in-tkinter
+
+    def __init__(self, widget, text, color="#ffe14c"):
+        """
+        Create a tooltip for an existent widget.
+        Args:
+            widget: The widget the tooltip is applied to.
+            text (str): The text of the tooltip.
+            color: The color of the tooltip.
+        """
+        self.waittime = 500  # miliseconds
+        self.wraplength = 180  # pixels
+        self.widget = widget
+        self.text = text
+        self.color = color
+        self.widget.bind("<Enter>", self.enter)
+        self.widget.bind("<Leave>", self.leave)
+        self.widget.bind("<ButtonPress>", self.leave)
+        self.id = None
+        self.tw = None
+
+    def enter(self, event=None):
+        self.schedule()
+
+    def leave(self, event=None):
+        self.unschedule()
+        self.hidetip()
+
+    def schedule(self):
+        self.unschedule()
+        self.id = self.widget.after(self.waittime, self.showtip)
+
+    def unschedule(self):
+        id = self.id
+        self.id = None
+        if id:
+            self.widget.after_cancel(id)
+
+    def showtip(self, event=None):
+        x, y, cx, cy = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 20
+        # creates a toplevel window
+        self.tw = Toplevel(self.widget)
+        # Leaves only the label and removes the app window
+        self.tw.wm_overrideredirect(True)
+        self.tw.wm_geometry("+%d+%d" % (x, y))
+        label = Label(self.tw, text=self.text, justify='left',
+                      background=self.color, relief='solid', borderwidth=1,
+                      wraplength=self.wraplength)
+        label.pack(ipadx=1)
+
+    def hidetip(self):
+        tw = self.tw
+        self.tw = None
+        if tw:
+            tw.destroy()
+
+
 # Specific intensity logic
 # From this point code could be moved to a new file to avoid repetition in freqmeter.py
 
@@ -262,6 +328,8 @@ class IntensityListener(TkListener):
 
         self.buttonCapture = Button(master=self.frmOperations, text='Plot capture', command=self.plot_capture)
         self.buttonCapture.pack(side=LEFT)
+        self.ttpCapture = CreateToolTip(self.buttonCapture,
+                                        "Save the plot in pdf format.")
 
         self.frmConfig = Frame(master=self)
         self.frmConfig.pack(side=BOTTOM)
@@ -274,18 +342,24 @@ class IntensityListener(TkListener):
         self.buttonInterval = Button(master=self.frmInterval, text='Update', command=self.change_interval)
         self.txtInterval.pack(side=TOP)
         self.buttonInterval.pack(side=TOP)
+        self.ttpInterval = CreateToolTip(self.buttonInterval,
+                                         "Change the sampling time per point to the number above.\nMust be > 0.1 s.")
 
+        self.frmStreakLen = LabelFrame(master=self.frmConfig, text="Streak max points")
+        self.frmStreakLen.pack(side=LEFT)
         self.varStreakLen = IntVar()
         self.varStreakLen.set(0)
-        self.lblStreakLen = Label(master=self.frmConfig, text="Streak points")
-        self.txtStreakLen = Entry(master=self.frmConfig, textvariable=self.varStreakLen)
-        self.lblStreakLen.pack(side=LEFT)
-        self.txtStreakLen.pack(side=LEFT)
+        self.txtStreakLen = Entry(master=self.frmStreakLen, textvariable=self.varStreakLen)
+        self.txtStreakLen.pack(side=TOP)
+        self.ttpStreakLen = CreateToolTip(self.txtStreakLen,
+                                          "Stop the streak when this number of points is reached. 0 for no automatic stop.")
 
         self.varStreakToCsv = BooleanVar()
         self.varStreakToCsv.set(True)
-        self.chkStreakToCsv = Checkbutton(master=self.frmConfig, text="Save streaks", variable=self.varStreakToCsv)
-        self.chkStreakToCsv.pack(side=LEFT)
+        self.chkStreakToCsv = Checkbutton(master=self.frmStreakLen, text="Save streaks", variable=self.varStreakToCsv)
+        self.chkStreakToCsv.pack(side=BOTTOM)
+        self.ttpStreakToCsv = CreateToolTip(self.chkStreakToCsv,
+                                            "If on, the streak will be saved as a csv when completed.")
 
     def change_interval(self):
         new_interval = self.varInterval.get()
@@ -294,12 +368,13 @@ class IntensityListener(TkListener):
             return False
         if new_interval < 0.1:
             self.varStatus.set("Too small sampling ignored (min. 0.1).")
+            self.varInterval.set(0.1)
             return False
         max_retries = 3
         while max_retries > 0:
             max_retries -= 1
             if self.restart_listener(new_interval):
-                self.varStatus.set("Sampling interval set to %f" % new_interval)
+                self.varStatus.set("Sampling interval set to %g" % new_interval)
                 return True
         self.varStatus.set("Unable to change the interval.")
         return False
